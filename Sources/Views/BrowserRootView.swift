@@ -13,15 +13,17 @@ struct BrowserRootView: View {
     @State private var showHistory = false
     @State private var showProxy = false
     @State private var showPageInfo = false
+    @State private var didInitialLoad = false
 
     var body: some View {
         ZStack {
-            Color(white: 0.07).ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
                 BrowserWebView(coordinatorModel: web)
                     .environmentObject(store)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 bottomBar
             }
 
@@ -31,16 +33,18 @@ struct BrowserRootView: View {
                     .zIndex(10)
             }
         }
-        .sheet(isPresented: $showTabs) { TabsSheet() }
+        .sheet(isPresented: $showTabs) {
+            TabsSheet().environmentObject(store)
+        }
         .sheet(isPresented: $showMenu) {
             MainMenuSheet(
-                onExtensions: { showMenu = false; showExtensions = true },
-                onSettings: { showMenu = false; showSettings = true },
+                onExtensions: { showMenu = false; DispatchQueue.main.async { showExtensions = true } },
+                onSettings: { showMenu = false; DispatchQueue.main.async { showSettings = true } },
                 onConsole: { showMenu = false; showConsole = true },
-                onBookmarks: { showMenu = false; showBookmarks = true },
-                onHistory: { showMenu = false; showHistory = true },
-                onProxy: { showMenu = false; showProxy = true },
-                onPageInfo: { showMenu = false; showPageInfo = true },
+                onBookmarks: { showMenu = false; DispatchQueue.main.async { showBookmarks = true } },
+                onHistory: { showMenu = false; DispatchQueue.main.async { showHistory = true } },
+                onProxy: { showMenu = false; DispatchQueue.main.async { showProxy = true } },
+                onPageInfo: { showMenu = false; DispatchQueue.main.async { showPageInfo = true } },
                 onDesktop: {
                     web.desktopMode.toggle()
                     store.updateActive { $0.desktopMode = web.desktopMode }
@@ -50,60 +54,71 @@ struct BrowserRootView: View {
                 desktopOn: web.desktopMode
             )
         }
-        .sheet(isPresented: $showExtensions) { ExtensionsView() }
-        .sheet(isPresented: $showSettings) { SettingsView() }
-        .sheet(isPresented: $showBookmarks) { BookmarksView(onOpen: openURL) }
-        .sheet(isPresented: $showHistory) { HistoryView(onOpen: openURL) }
-        .sheet(isPresented: $showProxy) { ProxyView() }
+        .sheet(isPresented: $showExtensions) { ExtensionsView().environmentObject(store) }
+        .sheet(isPresented: $showSettings) { SettingsView().environmentObject(store) }
+        .sheet(isPresented: $showBookmarks) {
+            BookmarksView(onOpen: openURL).environmentObject(store)
+        }
+        .sheet(isPresented: $showHistory) {
+            HistoryView(onOpen: openURL).environmentObject(store)
+        }
+        .sheet(isPresented: $showProxy) { ProxyView().environmentObject(store) }
         .sheet(isPresented: $showPageInfo) { PageInfoView(web: web) }
-        .onAppear { syncFromTab() }
-        .onChange(of: store.activeTabId) { _ in syncFromTab() }
+        .onAppear {
+            if !didInitialLoad {
+                didInitialLoad = true
+                // Laisse le WKWebView s'attacher avant de charger
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    syncFromTab()
+                }
+            }
+        }
+        .onChange(of: store.activeTabId) { _ in
+            syncFromTab()
+        }
     }
 
     private var topBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Button { web.goBack() } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .disabled(!(store.activeTab?.canGoBack ?? false))
+        HStack(spacing: 8) {
+            Button { web.goBack() } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!(store.activeTab?.canGoBack ?? false))
 
-                Button { web.goForward() } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .disabled(!(store.activeTab?.canGoForward ?? false))
+            Button { web.goForward() } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!(store.activeTab?.canGoForward ?? false))
 
-                HStack {
-                    if store.activeTab?.isLoading == true {
-                        ProgressView().scaleEffect(0.7)
-                    } else {
-                        Image(systemName: "lock.fill").font(.caption2).opacity(0.5)
+            HStack {
+                if store.activeTab?.isLoading == true {
+                    ProgressView().scaleEffect(0.7)
+                } else {
+                    Image(systemName: "lock.fill").font(.caption2).opacity(0.5)
+                }
+                TextField("Recherche ou URL", text: $address, onCommit: submitAddress)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .font(.system(size: 15))
+                if !address.isEmpty {
+                    Button { address = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                     }
-                    TextField("Recherche ou URL", text: $address, onCommit: submitAddress)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                        .font(.system(size: 15))
-                    if !address.isEmpty {
-                        Button { address = "" } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                Button { web.reload() } label: {
-                    Image(systemName: "arrow.clockwise")
                 }
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+
+            Button { web.reload() } label: {
+                Image(systemName: "arrow.clockwise")
+            }
         }
-        .padding(.bottom, 6)
-        .background(Color(white: 0.1))
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(white: 0.12))
     }
 
     private var bottomBar: some View {
@@ -111,7 +126,7 @@ struct BrowserRootView: View {
             Button { showTabs = true } label: {
                 ZStack {
                     Image(systemName: "square.on.square")
-                    Text("\(store.tabs.count)")
+                    Text("\(max(store.tabs.count, 1))")
                         .font(.system(size: 9, weight: .bold))
                 }
             }
@@ -138,14 +153,15 @@ struct BrowserRootView: View {
             }
         }
         .font(.system(size: 20))
-        .foregroundStyle(.white)
+        .foregroundColor(.white)
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
-        .background(Color(white: 0.1))
+        .background(Color(white: 0.12))
     }
 
     private func submitAddress() {
         let t = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
         if t.contains(" ") || (!t.contains(".") && !t.hasPrefix("http")) {
             web.loadSearch(t, enginePrefix: store.settings.searchEngineURL)
         } else {
@@ -164,6 +180,8 @@ struct BrowserRootView: View {
         guard let t = store.activeTab else { return }
         address = t.urlString
         web.desktopMode = t.desktopMode
-        web.load(t.urlString)
+        if !t.urlString.isEmpty {
+            web.load(t.urlString)
+        }
     }
 }

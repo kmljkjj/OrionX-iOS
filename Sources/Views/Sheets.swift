@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Menu principal
-
 struct MainMenuSheet: View {
     var onExtensions: () -> Void
     var onSettings: () -> Void
@@ -18,25 +16,24 @@ struct MainMenuSheet: View {
     var body: some View {
         NavigationView {
             List {
-                Section("Navigation") {
-                    row("Favoris", "star.fill", .yellow, onBookmarks)
-                    row("Historique", "clock.arrow.circlepath", .blue, onHistory)
-                    row("Infos page / source", "doc.text.magnifyingglass", .cyan, onPageInfo)
+                Section(header: Text("Navigation")) {
+                    btn("Favoris", "star.fill", onBookmarks)
+                    btn("Historique", "clock", onHistory)
+                    btn("Source HTML", "doc.text", onPageInfo)
                 }
-                Section("Outils") {
-                    row("Extensions & scripts", "puzzlepiece.extension.fill", .purple, onExtensions)
-                    row("Console développeur", "terminal.fill", .green, onConsole)
-                    row("Proxy / IP", "network", .orange, onProxy)
-                    Button {
-                        onDesktop()
-                    } label: {
+                Section(header: Text("Outils")) {
+                    btn("Extensions / scripts", "puzzlepiece.extension", onExtensions)
+                    btn("Console", "terminal", onConsole)
+                    btn("Proxy / IP", "network", onProxy)
+                    Button(action: onDesktop) {
                         Label(desktopOn ? "Mode desktop · ON" : "Mode desktop · OFF", systemImage: "desktopcomputer")
                     }
                 }
                 Section {
-                    row("Réglages", "gearshape.fill", .gray, onSettings)
+                    btn("Réglages", "gearshape", onSettings)
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -45,21 +42,16 @@ struct MainMenuSheet: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 
-    private func row(_ title: String, _ icon: String, _ color: Color, _ action: @escaping () -> Void) -> some View {
+    private func btn(_ title: String, _ icon: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label {
-                Text(title).foregroundStyle(.primary)
-            } icon: {
-                Image(systemName: icon).foregroundStyle(color)
-            }
+            Label(title, systemImage: icon)
         }
     }
 }
-
-// MARK: - Onglets
 
 struct TabsSheet: View {
     @EnvironmentObject var store: BrowserStore
@@ -69,31 +61,35 @@ struct TabsSheet: View {
         NavigationView {
             List {
                 ForEach(store.tabs) { tab in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(tab.title).lineLimit(1)
-                            Text(tab.urlString)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        if tab.id == store.activeTabId {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         store.activeTabId = tab.id
                         store.save()
                         dismiss()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(tab.title).lineLimit(1).foregroundColor(.primary)
+                                Text(tab.urlString)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if tab.id == store.activeTabId {
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(.cyan)
+                            }
+                        }
                     }
                 }
                 .onDelete { idx in
-                    for i in idx { store.closeTab(store.tabs[i].id) }
+                    for i in idx.sorted(by: >) {
+                        if store.tabs.indices.contains(i) {
+                            store.closeTab(store.tabs[i].id)
+                        }
+                    }
                 }
             }
-            .navigationTitle("Onglets (\(store.tabs.count))")
+            .navigationTitle("Onglets")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
@@ -108,11 +104,10 @@ struct TabsSheet: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Favoris / Historique
 
 struct BookmarksView: View {
     @EnvironmentObject var store: BrowserStore
@@ -128,16 +123,24 @@ struct BookmarksView: View {
                         dismiss()
                     } label: {
                         VStack(alignment: .leading) {
-                            Text(b.title).foregroundStyle(.primary)
-                            Text(b.urlString).font(.caption2).foregroundStyle(.secondary)
+                            Text(b.title).foregroundColor(.primary)
+                            Text(b.urlString).font(.caption2).foregroundColor(.secondary)
                         }
                     }
                 }
-                .onDelete { i in store.bookmarks.remove(atOffsets: i); store.save() }
+                .onDelete { i in
+                    store.bookmarks.remove(atOffsets: i)
+                    store.save()
+                }
             }
             .navigationTitle("Favoris")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
+            }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
@@ -156,26 +159,33 @@ struct HistoryView: View {
                         dismiss()
                     } label: {
                         VStack(alignment: .leading) {
-                            Text(h.title).foregroundStyle(.primary)
-                            Text(h.urlString).font(.caption2).foregroundStyle(.secondary)
+                            Text(h.title).foregroundColor(.primary)
+                            Text(h.urlString).font(.caption2).foregroundColor(.secondary)
                         }
                     }
                 }
-                .onDelete { i in store.history.remove(atOffsets: i); store.save() }
+                .onDelete { i in
+                    store.history.remove(atOffsets: i)
+                    store.save()
+                }
             }
             .navigationTitle("Historique")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Effacer") { store.history.removeAll(); store.save() }
+                    Button("Effacer") {
+                        store.history.removeAll()
+                        store.save()
+                    }
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Extensions
 
 struct ExtensionsView: View {
     @EnvironmentObject var store: BrowserStore
@@ -185,38 +195,56 @@ struct ExtensionsView: View {
     var body: some View {
         NavigationView {
             List {
-                Section {
-                    Text("OrionX injecte des **userscripts** JS/CSS (style Violentmonkey). Les vrais packs Chrome/Firefox nécessitent les APIs Orion/Kagi non publiques sur IPA sideload.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Section(footer: Text("Userscripts JS/CSS injectés dans les pages (pas les packs Chrome/Firefox natifs).")) {
+                    EmptyView()
                 }
-                Section("Scripts installés") {
-                    ForEach($store.scripts) { $s in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
+                Section(header: Text("Scripts")) {
+                    ForEach(store.scripts) { s in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(s.name).font(.headline)
-                                Spacer()
-                                Toggle("", isOn: $s.enabled).labelsHidden()
+                                Text("\(s.matches) · \(s.isCSS ? "CSS" : "JS")")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
                             }
-                            Text("match: \(s.matches) · \(s.isCSS ? "CSS" : "JS")")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Toggle("", isOn: binding(for: s.id))
+                                .labelsHidden()
                         }
-                        .onChange(of: s.enabled) { _ in store.save() }
                     }
-                    .onDelete { i in store.scripts.remove(atOffsets: i); store.save() }
+                    .onDelete { i in
+                        store.scripts.remove(atOffsets: i)
+                        store.save()
+                    }
                 }
             }
             .navigationTitle("Extensions")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { showAdd = true } label: { Image(systemName: "plus") }
                 }
             }
-            .sheet(isPresented: $showAdd) { AddScriptView() }
+            .sheet(isPresented: $showAdd) {
+                AddScriptView().environmentObject(store)
+            }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
+    }
+
+    private func binding(for id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { store.scripts.first(where: { $0.id == id })?.enabled ?? false },
+            set: { newVal in
+                if let i = store.scripts.firstIndex(where: { $0.id == id }) {
+                    store.scripts[i].enabled = newVal
+                    store.save()
+                }
+            }
+        )
     }
 }
 
@@ -225,7 +253,7 @@ struct AddScriptView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = "Mon script"
     @State private var matches = "*"
-    @State private var code = "console.log('OrionX userscript');"
+    @State private var code = "console.log('OrionX');"
     @State private var isCSS = false
 
     var body: some View {
@@ -233,16 +261,18 @@ struct AddScriptView: View {
             Form {
                 TextField("Nom", text: $name)
                 TextField("Match (* ou host)", text: $matches)
-                Toggle("CSS (sinon JavaScript)", isOn: $isCSS)
-                Section("Code") {
+                Toggle("CSS", isOn: $isCSS)
+                Section(header: Text("Code")) {
                     TextEditor(text: $code)
                         .font(.system(size: 13, design: .monospaced))
-                        .frame(minHeight: 180)
+                        .frame(minHeight: 160)
                 }
             }
-            .navigationTitle("Nouveau script")
+            .navigationTitle("Nouveau")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Ajouter") {
                         store.scripts.append(UserScript(
@@ -254,11 +284,10 @@ struct AddScriptView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Proxy
 
 struct ProxyView: View {
     @EnvironmentObject var store: BrowserStore
@@ -267,43 +296,36 @@ struct ProxyView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section {
+                Section(footer: Text("Pas un VPN système iOS. Configure un proxy HTTP/SOCKS si tu en as un.")) {
                     Toggle("Activer proxy", isOn: $store.settings.proxy.enabled)
                     Picker("Type", selection: $store.settings.proxy.type) {
                         Text("HTTP").tag("HTTP")
                         Text("SOCKS5").tag("SOCKS5")
                     }
                     TextField("Hôte", text: $store.settings.proxy.host)
-                        .textInputAutocapitalization(.never)
+                        .autocapitalization(.none)
                     TextField("Port", value: $store.settings.proxy.port, format: .number)
                         .keyboardType(.numberPad)
-                    TextField("User (opt)", text: $store.settings.proxy.username)
-                    SecureField("Pass (opt)", text: $store.settings.proxy.password)
-                } footer: {
-                    Text("Sur iOS sideload, un proxy HTTP/SOCKS se configure ici pour guidance / apps liées. Un **VPN système** (changer toute l’IP de l’appareil) demande une Network Extension signée Apple — impossible en IPA unsigned pure. Tu peux coller un proxy gratuit HTTP public à tes risques (souvent instables / non privés).")
-                }
-
-                Section("Presets (exemples — vérifie qu’ils fonctionnent)") {
-                    Button("Désactiver") {
-                        store.settings.proxy.enabled = false
-                        store.save()
-                    }
                 }
             }
-            .navigationTitle("Proxy / IP")
+            .navigationTitle("Proxy")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Sauver") { store.save(); dismiss() }
+                    Button("Sauver") {
+                        store.save()
+                        dismiss()
+                    }
                 }
             }
             .onDisappear { store.save() }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Settings
 
 struct SettingsView: View {
     @EnvironmentObject var store: BrowserStore
@@ -312,34 +334,36 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Général") {
-                    TextField("Page d’accueil", text: $store.settings.homepage)
-                    TextField("Moteur (préfixe URL)", text: $store.settings.searchEngineURL)
-                    Toggle("Mode desktop par défaut", isOn: $store.settings.desktopByDefault)
+                Section(header: Text("Général")) {
+                    TextField("Accueil", text: $store.settings.homepage)
+                        .autocapitalization(.none)
+                    TextField("Moteur (préfixe)", text: $store.settings.searchEngineURL)
+                        .autocapitalization(.none)
+                    Toggle("Desktop par défaut", isOn: $store.settings.desktopByDefault)
                 }
-                Section("Confidentialité") {
+                Section(header: Text("Confidentialité")) {
                     Toggle("Bloquer pubs", isOn: $store.settings.blockAds)
                     Toggle("Bloquer trackers", isOn: $store.settings.blockTrackers)
-                }
-                Section("User-Agent custom") {
-                    TextField("Laisser vide = auto", text: $store.settings.customUserAgent)
-                        .font(.caption)
                 }
             }
             .navigationTitle("Réglages")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Sauver") { store.save(); dismiss() }
+                    Button("Sauver") {
+                        store.save()
+                        dismiss()
+                    }
                 }
             }
             .onDisappear { store.save() }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Page source
 
 struct PageInfoView: View {
     @ObservedObject var web: TabWebModel
@@ -354,24 +378,27 @@ struct PageInfoView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .navigationTitle("Source HTML")
+            .navigationTitle("Source")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Copier") { UIPasteboard.general.string = html }
                 }
             }
             .onAppear {
                 web.eval("document.documentElement.outerHTML") { r in
-                    html = String(r.prefix(200_000))
+                    DispatchQueue.main.async {
+                        html = String(r.prefix(150_000))
+                    }
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }
-
-// MARK: - Console
 
 struct ConsolePanel: View {
     @ObservedObject var store: BrowserStore
@@ -385,16 +412,16 @@ struct ConsolePanel: View {
             Spacer()
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Console").font(.headline).foregroundStyle(.white)
+                    Text("Console").font(.headline).foregroundColor(.white)
                     Spacer()
                     Button("Clear") {
                         if tab == 0 { store.consoleLogs.removeAll() }
                         else { store.consoleErrors.removeAll() }
                     }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.cyan)
+                    .font(.caption)
+                    .foregroundColor(.cyan)
                     Button(action: onClose) {
-                        Image(systemName: "xmark").foregroundStyle(.white.opacity(0.8))
+                        Image(systemName: "xmark").foregroundColor(.white.opacity(0.8))
                     }
                 }
                 .padding()
@@ -412,21 +439,21 @@ struct ConsolePanel: View {
                         ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                             Text(line)
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(tab == 1 ? Color.red.opacity(0.9) : Color.white.opacity(0.85))
+                                .foregroundColor(tab == 1 ? .red : .white.opacity(0.85))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .padding(10)
                 }
-                .frame(height: 160)
+                .frame(height: 150)
 
                 HStack {
                     TextField("JS…", text: $js)
-                        .textFieldStyle(.plain)
                         .font(.system(size: 12, design: .monospaced))
                         .padding(8)
                         .background(Color.white.opacity(0.08))
                         .cornerRadius(8)
+                        .foregroundColor(.white)
                     Button("Run") {
                         let c = js
                         web.eval(c) { r in store.log("< \(r)") }
@@ -435,15 +462,14 @@ struct ConsolePanel: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.cyan)
-                    .foregroundStyle(.black)
+                    .foregroundColor(.black)
                     .cornerRadius(8)
                 }
                 .padding()
             }
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.92))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.12)))
+                    .fill(Color.black.opacity(0.94))
             )
             .padding()
         }
