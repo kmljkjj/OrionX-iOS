@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-@MainActor
+/// Store partagé — pas @MainActor sur toute la classe (WK delegates hors main actor).
 final class BrowserStore: ObservableObject {
     @Published var tabs: [BrowserTab] = []
     @Published var activeTabId: UUID?
@@ -14,6 +14,7 @@ final class BrowserStore: ObservableObject {
     @Published var consoleErrors: [String] = []
 
     private let defaults = UserDefaults.standard
+    private let lock = NSLock()
 
     init() {
         load()
@@ -37,6 +38,13 @@ final class BrowserStore: ObservableObject {
 
     var activeTabIndex: Int? {
         tabs.firstIndex { $0.id == activeTabId }
+    }
+
+    /// Snapshot thread-safe pour adblock (appelé depuis WK delegate)
+    func adblockFlags() -> (ads: Bool, trackers: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (settings.blockAds, settings.blockTrackers)
     }
 
     func newTab(url: String? = nil) {
@@ -80,15 +88,23 @@ final class BrowserStore: ObservableObject {
 
     func log(_ msg: String) {
         let line = "[\(Self.ts())] \(msg)"
-        consoleLogs.append(line)
-        if consoleLogs.count > 500 { consoleLogs.removeFirst(consoleLogs.count - 500) }
+        DispatchQueue.main.async {
+            self.consoleLogs.append(line)
+            if self.consoleLogs.count > 500 {
+                self.consoleLogs.removeFirst(self.consoleLogs.count - 500)
+            }
+        }
     }
 
     func logError(_ msg: String) {
         let line = "[\(Self.ts())] \(msg)"
-        consoleErrors.append(line)
-        consoleLogs.append("ERR " + line)
-        if consoleErrors.count > 200 { consoleErrors.removeFirst(consoleErrors.count - 200) }
+        DispatchQueue.main.async {
+            self.consoleErrors.append(line)
+            self.consoleLogs.append("ERR " + line)
+            if self.consoleErrors.count > 200 {
+                self.consoleErrors.removeFirst(self.consoleErrors.count - 200)
+            }
+        }
     }
 
     func clearConsole() {

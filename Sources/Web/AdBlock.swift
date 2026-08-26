@@ -1,7 +1,6 @@
 import Foundation
 
 enum AdBlock {
-    /// Domaines / motifs basiques (pas une full EasyList, mais efficace en mobile)
     static let blockedHosts: Set<String> = [
         "doubleclick.net", "googleadservices.com", "googlesyndication.com",
         "pagead2.googlesyndication.com", "adservice.google.com",
@@ -16,16 +15,14 @@ enum AdBlock {
         "pixel.gif", "analytics.js", "gtm.js",
     ]
 
-    static func shouldBlock(url: URL, settings: BrowserSettings) -> Bool {
-        guard settings.blockAds || settings.blockTrackers else { return false }
+    static func shouldBlock(url: URL, blockAds: Bool, blockTrackers: Bool) -> Bool {
+        guard blockAds || blockTrackers else { return false }
         let host = (url.host ?? "").lowercased()
-        if settings.blockAds || settings.blockTrackers {
-            for b in blockedHosts {
-                if host == b || host.hasSuffix("." + b) { return true }
-            }
+        for b in blockedHosts {
+            if host == b || host.hasSuffix("." + b) { return true }
         }
-        let full = url.absoluteString.lowercased()
-        if settings.blockAds {
+        if blockAds {
+            let full = url.absoluteString.lowercased()
             for k in blockedPathKeywords where full.contains(k) { return true }
         }
         return false

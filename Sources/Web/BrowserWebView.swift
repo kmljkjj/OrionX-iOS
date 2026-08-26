@@ -21,7 +21,6 @@ struct BrowserWebView: UIViewRepresentable {
         let uc = cfg.userContentController
         uc.add(context.coordinator, name: "orionx")
 
-        // Bridge erreurs / console
         let bridge = """
         (function(){
           function send(t,m){try{window.webkit.messageHandlers.orionx.postMessage({type:t,message:String(m)})}catch(e){}}
@@ -48,7 +47,6 @@ struct BrowserWebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.store = store
-        // UA desktop
         if coordinatorModel.desktopMode {
             uiView.customUserAgent =
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
@@ -73,41 +71,46 @@ struct BrowserWebView: UIViewRepresentable {
             guard let body = message.body as? [String: Any],
                   let type = body["type"] as? String,
                   let msg = body["message"] as? String else { return }
-            Task { @MainActor in
-                if type == "error" { store.logError(msg) }
-                else { store.log(msg) }
+            if type == "error" {
+                store.logError(msg)
+            } else {
+                store.log(msg)
             }
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            model.isLoading = true
-            Task { @MainActor in
-                store.updateActive { $0.isLoading = true }
+            DispatchQueue.main.async {
+                self.model.isLoading = true
+                self.store.updateActive { $0.isLoading = true }
             }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            model.isLoading = false
             let title = webView.title ?? ""
             let url = webView.url?.absoluteString ?? ""
-            Task { @MainActor in
-                store.updateActive {
+            let host = webView.url?.host
+            let scripts = store.scripts
+            DispatchQueue.main.async {
+                self.model.isLoading = false
+                self.store.updateActive {
                     $0.isLoading = false
                     $0.title = title.isEmpty ? url : title
                     $0.urlString = url
                     $0.canGoBack = webView.canGoBack
                     $0.canGoForward = webView.canGoForward
                 }
-                if !url.isEmpty { store.addHistory(title: title.isEmpty ? url : title, url: url) }
-                model.injectScripts(from: store.scripts, host: webView.url?.host)
+                if !url.isEmpty {
+                    self.store.addHistory(title: title.isEmpty ? url : title, url: url)
+                }
+                self.model.injectScripts(from: scripts, host: host)
             }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            model.isLoading = false
-            Task { @MainActor in
-                store.updateActive { $0.isLoading = false }
-                store.logError(error.localizedDescription)
+            DispatchQueue.main.async {
+                self.model.isLoading = false
+                self.store.updateActive { $0.isLoading = false }
+                self.store.logError(error.localizedDescription)
             }
         }
 
@@ -116,10 +119,12 @@ struct BrowserWebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            if let url = navigationAction.request.url,
-               AdBlock.shouldBlock(url: url, settings: store.settings) {
-                decisionHandler(.cancel)
-                return
+            if let url = navigationAction.request.url {
+                let flags = store.adblockFlags()
+                if AdBlock.shouldBlock(url: url, blockAds: flags.ads, blockTrackers: flags.trackers) {
+                    decisionHandler(.cancel)
+                    return
+                }
             }
             decisionHandler(.allow)
         }
@@ -131,19 +136,19 @@ struct BrowserWebView: UIViewRepresentable {
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
             if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-                Task { @MainActor in store.newTab(url: url.absoluteString) }
+                DispatchQueue.main.async {
+                    self.store.newTab(url: url.absoluteString)
+                }
             }
             return nil
         }
     }
 }
 
-/// État WebView par onglet
 final class TabWebModel: ObservableObject {
     @Published var isLoading = false
     @Published var desktopMode = false
     weak var webView: WKWebView?
-    private var lastLoaded: String?
 
     func attach(_ wv: WKWebView) {
         webView = wv
@@ -153,15 +158,10 @@ final class TabWebModel: ObservableObject {
         guard let wv = webView else { return }
         var s = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.isEmpty { return }
-        if !s.contains(".") && !s.hasPrefix("http") {
-            // recherche
-            return
-        }
         if !s.hasPrefix("http://") && !s.hasPrefix("https://") && !s.hasPrefix("about:") {
             s = "https://" + s
         }
         guard let url = URL(string: s) else { return }
-        lastLoaded = s
         wv.load(URLRequest(url: url))
     }
 
@@ -177,8 +177,11 @@ final class TabWebModel: ObservableObject {
 
     func eval(_ js: String, completion: ((String) -> Void)? = nil) {
         webView?.evaluateJavaScript(js) { r, e in
-            if let e = e { completion?("error: \(e.localizedDescription)") }
-            else { completion?(String(describing: r ?? "undefined")) }
+            if let e = e {
+                completion?("error: \(e.localizedDescription)")
+            } else {
+                completion?(String(describing: r ?? "undefined"))
+            }
         }
     }
 
@@ -189,27 +192,27 @@ final class TabWebModel: ObservableObject {
             let match = s.matches == "*" || h.contains(s.matches.lowercased())
             guard match else { continue }
             if s.isCSS {
+                let escaped = jsonString(s.code)
                 let js = """
                 (function(){
                   var id='ox-\(s.id.uuidString)';
                   if(document.getElementById(id)) return;
                   var st=document.createElement('style'); st.id=id;
-                  st.textContent=\(jsonString(s.code));
+                  st.textContent=\(escaped);
                   (document.head||document.documentElement).appendChild(st);
                 })();
                 """
                 wv.evaluateJavaScript(js, completionHandler: nil)
             } else {
-                let js = """
-                (function(){ try { \(s.code) } catch(e){ console.error('userscript', e); } })();
-                """
+                // Wrap user JS; avoid breaking on raw code
+                let js = "(function(){ try {\n" + s.code + "\n} catch(e){ console.error('userscript', e); } })();"
                 wv.evaluateJavaScript(js, completionHandler: nil)
             }
         }
     }
 
     private func jsonString(_ s: String) -> String {
-        let d = try? JSONSerialization.data(withJSONObject: s)
+        let d = try? JSONSerialization.data(withJSONObject: s, options: [])
         return d.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
 }
